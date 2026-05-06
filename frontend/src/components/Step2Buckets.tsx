@@ -49,6 +49,15 @@ const createLineItem = (index: number): BusinessLineItem => ({
 const sumUnits = (items: BusinessLineItem[]): number =>
   items.reduce((sum, item) => sum + item.unitsPerWeek, 0);
 
+const purchaseCycleOptions: Array<{ value: StockRefillFrequency; label: string; helper: string }> = [
+  { value: 'daily', label: 'Daily', helper: 'Small purchases made on most selling days.' },
+  { value: 'weekly', label: 'Weekly', helper: 'A normal weekly restock or input run.' },
+  { value: 'biweekly', label: 'Every 2 weeks', helper: 'A larger purchase that covers about two weeks.' },
+  { value: 'monthly', label: 'Monthly', helper: 'Enough stock or inputs for a full month.' },
+  { value: 'bulk', label: 'Bulk', helper: 'A large reorder that lasts several months.' },
+  { value: 'irregular', label: 'Irregular', helper: 'Purchases happen only when stock or supplies run low.' },
+];
+
 function StepSnapshot({
   label,
   value,
@@ -147,9 +156,78 @@ export default function Step2Buckets({ state, setState, onSeeHow, onNext, onBack
       ...prev,
       step2_buckets: {
         ...prev.step2_buckets,
-        stockRefillFrequency,
+        stockRefillFrequency: stockRefillFrequency === 'as-needed' ? 'irregular' : stockRefillFrequency,
       },
     }));
+  };
+
+  const updatePurchaseCycleNumber = (
+    field: 'purchasesPerWeek' | 'sellingDaysPerWeek' | 'costPerPurchase' | 'bulkPurchaseCost' | 'bulkLifespanMonths' | 'purchaseEventsPerMonth' | 'averagePurchaseAmount',
+    value: number,
+  ) => {
+    setState((prev) => ({
+      ...prev,
+      step2_buckets: {
+        ...prev.step2_buckets,
+        [field]: value,
+      },
+    }));
+  };
+
+  const renderCycleNumberInput = (
+    field: 'purchasesPerWeek' | 'sellingDaysPerWeek' | 'costPerPurchase' | 'bulkPurchaseCost' | 'bulkLifespanMonths' | 'purchaseEventsPerMonth' | 'averagePurchaseAmount',
+    label: string,
+    helper: string,
+    placeholder: string,
+  ) => (
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold text-vuna-dark">{label}</Label>
+      <Input
+        type="text"
+        inputMode="numeric"
+        value={step2_buckets[field] ? Number(step2_buckets[field]).toLocaleString() : ''}
+        onChange={(e) => updatePurchaseCycleNumber(field, Number(e.target.value.replace(/\D/g, '')))}
+        placeholder={placeholder}
+        className="border-neutral-200 bg-white focus-visible:ring-vuna-primary"
+      />
+      <p className="text-xs leading-5 text-vuna-slate">{helper}</p>
+    </div>
+  );
+
+  const renderPurchaseCycleDetails = () => {
+    const selectedCycle = step2_buckets.stockRefillFrequency === 'as-needed'
+      ? 'irregular'
+      : step2_buckets.stockRefillFrequency;
+
+    if (selectedCycle === 'daily') {
+      return (
+        <div className="grid gap-4 md:grid-cols-3">
+          {renderCycleNumberInput('purchasesPerWeek', 'Buying days per week', 'How many days you normally buy stock or inputs.', '5')}
+          {renderCycleNumberInput('sellingDaysPerWeek', 'Selling days per week', 'Used to describe the cycle; sales still come from your item prices and volumes.', '6')}
+          {renderCycleNumberInput('costPerPurchase', 'Cash spent per buying day', 'Leave blank to estimate it from your weekly stock or production cost.', '50,000')}
+        </div>
+      );
+    }
+
+    if (selectedCycle === 'bulk') {
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          {renderCycleNumberInput('bulkPurchaseCost', 'Cash needed at reorder', 'The full amount you need when the bulk purchase happens.', '1,200,000')}
+          {renderCycleNumberInput('bulkLifespanMonths', 'Months the bulk purchase lasts', 'Used for reserve planning. We never divide by less than one month.', '3')}
+        </div>
+      );
+    }
+
+    if (selectedCycle === 'irregular') {
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          {renderCycleNumberInput('purchaseEventsPerMonth', 'Purchases per month', 'Your best estimate of how many purchase events happen in a normal month.', '2')}
+          {renderCycleNumberInput('averagePurchaseAmount', 'Average purchase amount', 'Leave blank to estimate it from your monthly stock or production cost.', '250,000')}
+        </div>
+      );
+    }
+
+    return null;
   };
 
   const handleCostChange = (bucket: CostBucketKey, id: string, amount: number) => {
@@ -439,17 +517,16 @@ export default function Step2Buckets({ state, setState, onSeeHow, onNext, onBack
           <CardHeader className="pb-4">
             <CardTitle className="text-xl text-vuna-dark">How often do you buy materials or stock?</CardTitle>
             <CardDescription className="text-vuna-slate">
-              This helps users think about their real buying cycle. Keep entering your costs per batch, per job, or per item so the calculator can convert them correctly.
+              This captures your buying rhythm. Monthly profit still comes from your prices, costs, and sales volume; this cycle controls how much opening cash you need for stock or work inputs.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-3">
-              {([
-                { value: 'weekly', label: 'Weekly', helper: 'A normal market pattern for regular restocking.' },
-                { value: 'monthly', label: 'Monthly', helper: 'Useful if you buy materials or stock in larger monthly cycles.' },
-                { value: 'as-needed', label: 'When stock runs out', helper: 'We treat this like weekly for planning safety.' },
-              ] as Array<{ value: StockRefillFrequency; label: string; helper: string }>).map((option) => {
-                const selected = step2_buckets.stockRefillFrequency === option.value;
+              {purchaseCycleOptions.map((option) => {
+                const currentCycle = step2_buckets.stockRefillFrequency === 'as-needed'
+                  ? 'irregular'
+                  : step2_buckets.stockRefillFrequency;
+                const selected = currentCycle === option.value;
                 return (
                 <button
                   key={option.value}
@@ -481,6 +558,7 @@ export default function Step2Buckets({ state, setState, onSeeHow, onNext, onBack
                 );
               })}
             </div>
+            {renderPurchaseCycleDetails()}
           </CardContent>
         </Card>
       )}

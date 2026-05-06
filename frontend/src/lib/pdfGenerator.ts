@@ -807,7 +807,7 @@ function buildPDFDocument(
   );
   drawTwoColumnTable(doc, y, [['Startup money used', 'Amount']], [
     ...startupCostRows,
-    ['First month of stock or work supplies', formatCurrency(results.firstStockCost)],
+    ['Opening stock or work cash', formatCurrency(results.firstStockCost)],
     ['Total startup money', formatCurrency(results.totalInitialInvestment)],
   ]);
   y = getLastTableY(doc, y) + 8;

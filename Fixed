@@ -1,0 +1,949 @@
+# VunaBusinessPlanner Simple Mode Fix Plan
+Version: 0.1
+Date: May 2026
+Status: Planning Only — Do Not Implement Until Approved
+
+## Source Inputs
+
+This plan combines:
+
+1. The current product integrity report
+2. The Stock Purchase Cycle Plan
+3. The Simple Mode screenshot review
+4. The Simple Mode language fixes
+5. The known BUG-1 issue:
+   - Simple Mode projectedHarvest12Months double-counts first stock cost as startup investment
+
+Older uploaded files have expired, so this plan is based on the current pasted plan, the current report summary, and the screenshot shared in this chat.
+
+---
+
+# Main Goal
+
+Make Simple Mode safe enough for public launch.
+
+Simple Mode must:
+
+- use language informal business owners understand
+- stop silently assuming every business restocks weekly
+- separate startup costs, monthly fixed costs, and stock/working-capital costs
+- fix BUG-1 before purchase-cycle changes
+- show plain business explanations, not accounting language
+- remain browser-only and offline-safe
+- avoid adding Advanced/Expert complexity into Simple Mode
+
+---
+
+# Implementation Strategy
+
+Do not fix everything at once.
+
+Implement in slices:
+
+1. Slice 1: Language cleanup only
+2. Slice 2: Fix BUG-1 stock/startup double-counting
+3. Slice 3: Add purchase cycle selector
+4. Slice 4: Add purchase-cycle-specific input questions
+5. Slice 5: Normalize all Simple Mode stock/revenue values to monthly
+6. Slice 6: Update Simple Mode result explanations
+7. Slice 7: Add optional spoilage adjustment
+8. Slice 8: Add launch golden tests
+
+Each slice must pass tests before moving to the next.
+
+---
+
+# Slice 1 — Language Cleanup Only
+
+## Purpose
+
+Make the Simple Mode screen easier for ordinary traders, farmers, processors, wholesalers, service providers, and informal business owners.
+
+No calculation logic changes in this slice.
+
+---
+
+## Hero Section
+
+### Current
+
+Set up your small-business plan in a few clear steps
+
+This planner is for real small businesses: shops, sellers, makers, service businesses, and wholesalers. We will keep the numbers simple and show what matters most first.
+
+### Replace with
+
+Set up your small-business plan in a few clear steps
+
+This planner is for real small businesses: shops, market sellers, makers, service providers, farmers, and wholesalers. We keep the numbers simple and show what matters most.
+
+---
+
+## Step 1 Title
+
+### Current
+
+What are we planning today?
+
+### Keep
+
+What are we planning today?
+
+---
+
+## Business Stage Label
+
+### Current
+
+Business stage
+
+### Replace with
+
+Is this a new business or one already running?
+
+---
+
+## Business Stage Helper Text
+
+### Current
+
+This changes the planner focus. New businesses emphasize startup and launch. Ongoing businesses emphasize restocking, pricing, and this season’s profit.
+
+### Replace with
+
+This helps us know whether to focus on starting costs, restocking, or current profit.
+
+---
+
+## New Business Card
+
+### Current
+
+New business
+
+Use this when you are starting from scratch and need startup recovery in the plan.
+
+### Replace with
+
+New business
+
+Choose this if you are starting from zero or buying things to begin.
+
+---
+
+## Ongoing Business Card
+
+### Current
+
+Ongoing business
+
+Use this when the business already exists and you want help with pricing, restocking, and this season’s profit.
+
+### Replace with
+
+Ongoing business
+
+Choose this if the business is already working and you want to check profit, stock, or pricing.
+
+---
+
+## Business Model Label
+
+### Current
+
+Business model for this plan
+
+### Replace with
+
+What kind of business is this?
+
+---
+
+## Business Model Helper Text
+
+### Current
+
+You make or process products from raw materials
+
+### Replace with
+
+Choose the option that best describes how this business makes money.
+
+---
+
+## Business Type Cards
+
+### Buy & Sell
+
+#### Current
+
+Buy & Sell
+RETAIL
+Tomatoes, onions, rice, local stock
+
+#### Replace with
+
+Buy & Sell
+I buy goods and resell them.
+Examples: tomatoes, onions, sugar, clothes, shop items.
+
+---
+
+### Sell Bulk
+
+#### Current
+
+Sell Bulk
+WHOLESALE
+Rice sacks, drinks, shop supply stock
+
+#### Replace with
+
+Buy in Bulk
+I buy large stock and resell it.
+Examples: rice sacks, drinks crates, wholesale stock.
+
+---
+
+### Do Work
+
+#### Current
+
+Do Work
+SERVICE
+Haircut, repair, transport, tailoring
+
+#### Replace with
+
+Provide a Service
+I earn by doing work for customers.
+Examples: salon, repair, tailoring, transport.
+
+---
+
+### Make & Sell
+
+#### Current
+
+Make & Sell
+MANUFACTURING
+Soap, baking, crafts, processed foods
+
+#### Replace with
+
+Make & Sell
+I make or process products before selling.
+Examples: soap, bread, crafts, peanut butter, books.
+
+---
+
+### Grow & Sell
+
+#### Current
+
+Grow & Sell
+AGRICULTURE
+Maize, tomatoes, onions, bananas, vegetables
+
+#### Replace with
+
+Grow & Sell
+I grow or rear something and sell it.
+Examples: maize, tomatoes, poultry, goats.
+
+---
+
+## Description Box Placeholder
+
+### Current
+
+Describe what you sell or do. Example: I run a roadside tomato stall. I buy fresh tomatoes each morning and sell them in small quantities.
+
+### Replace with
+
+Describe what you sell or do. Example: I sell tomatoes by the roadside. I buy fresh tomatoes in the morning and sell them during the day.
+
+---
+
+## Step 2 Title
+
+### Current
+
+Tell us where and how fast you will sell
+
+### Replace with
+
+Where will you sell, and how much do you expect to sell?
+
+---
+
+## Step 2 Helper Text
+
+### Current
+
+These details help us organize your roadmap and weekly sales plan.
+
+### Replace with
+
+This helps us estimate your sales and profit.
+
+---
+
+## Location Field Label
+
+### Current
+
+Where will you work from?
+
+### Replace with
+
+Where will you do this business?
+
+---
+
+## Weekly Sales Field Label
+
+### Current
+
+How many items do you expect to sell each week?
+
+### Temporary Slice 1 Replacement
+
+How many items do you expect to sell in a normal week?
+
+### Note
+
+This is temporary only. Slice 3 and Slice 4 will replace the fixed weekly assumption with purchase-cycle-specific questions.
+
+---
+
+## Step 3 Title
+
+### Current
+
+What does this business need to do for you right now?
+
+### Replace with
+
+What do you want this plan to help you with?
+
+---
+
+## Step 3 Helper Text
+
+### Current
+
+This does not change the math. It changes what we focus on in your result.
+
+### Keep
+
+This does not change the math. It changes what we focus on in your result.
+
+---
+
+## Goal Cards
+
+### Cover Family Needs
+
+#### Current
+
+Cover family needs
+
+Use this if the business must support household needs each month.
+
+#### Replace with
+
+Cover family needs
+
+Choose this if the business must help with food, rent, school fees, or home needs.
+
+---
+
+### Save for Something Big
+
+#### Current
+
+Save for something big
+
+Use this if you want the business to help build savings.
+
+#### Replace with
+
+Save for something big
+
+Choose this if you want to save for land, school fees, equipment, rent, or another big need.
+
+---
+
+### Grow the Business
+
+#### Current
+
+Grow the business
+
+Use this if you want to expand stock, customers, or output.
+
+#### Replace with
+
+Grow the business
+
+Choose this if you want to increase stock, customers, or production.
+
+---
+
+### Pay Back a Loan
+
+#### Current
+
+Pay back a loan
+
+Use this if debt pressure is one of the main concerns.
+
+#### Replace with
+
+Pay back a loan
+
+Choose this if the business must help you repay a loan.
+
+---
+
+### Keep It Running
+
+#### Current
+
+Keep it running
+
+Use this if your main goal is stability and survival.
+
+#### Replace with
+
+Keep it running
+
+Choose this if you mainly want the business to continue without failing.
+
+---
+
+### Not Sure Yet
+
+#### Current
+
+Not sure yet
+
+Use this if you want the planner to stay general for now.
+
+#### Replace with
+
+Not sure yet
+
+Choose this if you are not sure yet. We will keep the plan general.
+
+---
+
+## Step 4 Title
+
+### Current
+
+When do your customers usually pay you?
+
+### Keep
+
+When do your customers usually pay you?
+
+---
+
+## Step 4 Helper Text
+
+### Current
+
+This helps us show the difference between profit on paper and cash in hand.
+
+### Keep
+
+This helps us show the difference between profit on paper and cash in hand.
+
+---
+
+## Customer Payment Cards
+
+### Straight Away
+
+#### Current
+
+Straight away
+
+Customers usually pay at the time of sale.
+
+#### Replace with
+
+Immediately / on the spot
+
+Customers pay when they buy.
+
+---
+
+### Within a Week
+
+#### Current
+
+Within a week
+
+Some cash comes in later, but not too far away.
+
+#### Replace with
+
+Within a week
+
+Some customers pay after a few days.
+
+---
+
+### Within a Month
+
+#### Current
+
+Within a month
+
+Sales happen now, but cash may come much later.
+
+#### Replace with
+
+Within a month
+
+Some customers pay later in the month.
+
+---
+
+### Some Now, Some Later
+
+#### Current
+
+Some now, some later
+
+Part of the sales money comes immediately and part arrives later.
+
+#### Replace with
+
+Some now, some later
+
+Some pay immediately, others pay later.
+
+---
+
+## Step 5 Title
+
+### Current
+
+Do you want this business to grow soon?
+
+### Keep
+
+Do you want this business to grow soon?
+
+---
+
+## Step 5 Helper Text
+
+### Current
+
+Growth needs more stock, supplies, or working cash before the extra sales come in.
+
+### Keep
+
+Growth needs more stock, supplies, or working cash before the extra sales come in.
+
+---
+
+## Growth Cards
+
+### Stay Steady
+
+#### Current
+
+Stay steady
+
+Focus on making the current business work well first.
+
+#### Replace with
+
+Stay the same for now
+
+Focus on making the business stable first.
+
+---
+
+### Grow by 25%
+
+#### Current
+
+Grow by 25%
+
+Plan for moderate growth with some extra stock or work inputs.
+
+#### Replace with
+
+Grow a little
+
+Add some stock, customers, or sales.
+
+#### Internal Mapping
+
+growthTarget = 0.25
+
+---
+
+### Grow by 50%
+
+#### Current
+
+Grow by 50%
+
+Plan for aggressive growth that needs more cash up front.
+
+#### Replace with
+
+Grow a lot
+
+Plan for more stock, more customers, or bigger sales.
+
+#### Internal Mapping
+
+growthTarget = 0.50
+
+---
+
+## Main Button
+
+### Current
+
+Build My Roadmap
+
+### Replace with
+
+Show My Business Plan
+
+---
+
+## Slice 1 Acceptance Tests
+
+After Slice 1:
+
+- App still calculates exactly as before
+- No calculation logic is changed
+- No route is broken
+- Simple Mode form is still completable
+- Confusing terms are removed from the first screen:
+  - business model
+  - roadmap
+  - startup recovery
+  - output
+  - stability and survival
+- Business type choices remain five:
+  - Buy & Sell
+  - Buy in Bulk
+  - Provide a Service
+  - Make & Sell
+  - Grow & Sell
+
+---
+
+# Slice 2 — Fix BUG-1 Before Purchase Cycle Work
+
+## Purpose
+
+Fix the most dangerous Simple Mode calculation issue before adding new purchase-cycle logic.
+
+Current report issue:
+
+BUG-1:
+Simple Mode projectedHarvest12Months double-counts first stock cost as startup investment.
+
+This can mislead users by overstating investment cost or understating recovery.
+
+---
+
+## Required Accounting Separation
+
+Simple Mode must separate three buckets.
+
+---
+
+## Bucket 1: Startup Investment
+
+### Meaning
+
+One-time setup money used to start or prepare the business.
+
+### Examples
+
+- machine
+- table
+- weighing scale
+- tools
+- license setup
+- renovation
+- rent deposit
+- equipment
+- first setup costs
+
+### Used For
+
+- investment payback
+- startup recovery
+
+### Must Not Include
+
+- normal stock purchases
+- daily restocking
+- weekly restocking
+- bulk raw materials that are consumed and resold
+- working capital float
+
+---
+
+## Bucket 2: Monthly Fixed Costs
+
+### Meaning
+
+Costs paid regularly whether the business sells or not.
+
+### Examples
+
+- rent
+- electricity
+- salary
+- security
+- phone/data
+- transport
+- monthly license
+- storage
+
+### Used For
+
+- operating break-even
+- monthly operating profit
+
+---
+
+## Bucket 3: Stock / Supplies / Working Capital
+
+### Meaning
+
+Money used to buy goods, inputs, or materials for resale or production.
+
+### Examples
+
+- bread stock
+- tomato stock
+- soda stock
+- flour
+- packaging
+- soap inputs
+- peanut butter inputs
+- bookbinding materials
+- shop inventory
+- airtime float
+
+### Used For
+
+- variable cost
+- contribution
+- daily float
+- reorder warning
+- working capital needed
+
+### Must Not Be Used For
+
+- startup investment payback, unless separately labeled as working capital required
+- projected 12-month harvest subtraction as a one-time startup cost
+- fixed cost calculation
+
+---
+
+## Developer Instruction
+
+Fix Simple Mode so initial stock or restocking cost is not counted as startup investment in projected 12-month profit or payback calculations.
+
+Startup investment should include setup assets and one-time setup costs only.
+
+Stock and supplies should be treated as variable cost or working capital.
+
+The app may show working capital needed, but it must not subtract it twice or count it as lost startup money.
+
+---
+
+## Calculation Rule
+
+### Correct
+
+monthlyContribution = monthlyRevenue - monthlyVariableCost
+
+monthlyOperatingProfit = monthlyContribution - monthlyFixedCosts
+
+investmentPaybackMonths = startupInvestment / monthlyOperatingProfit
+
+workingCapitalNeeded = firstStockOrFloatAmount
+
+### Wrong
+
+startupInvestment = setupCosts + firstStockCost
+
+investmentPaybackMonths = startupInvestment / monthlyOperatingProfit
+
+projectedHarvest12Months = (monthlyOperatingProfit * 12) - setupCosts - firstStockCost
+
+---
+
+## Slice 2 Acceptance Test
+
+### Inputs
+
+startupSetupCosts = UGX 300,000
+firstStockPurchase = UGX 100,000
+monthlyRevenue = UGX 700,000
+monthlyStockCost = UGX 400,000
+monthlyFixedCosts = UGX 100,000
+
+### Expected
+
+monthlyContribution = 700,000 - 400,000
+monthlyContribution = UGX 300,000
+
+monthlyOperatingProfit = 300,000 - 100,000
+monthlyOperatingProfit = UGX 200,000
+
+investmentPaybackMonths = 300,000 / 200,000
+investmentPaybackMonths = 1.5 months
+
+workingCapitalNeeded = UGX 100,000
+
+### Wrong
+
+investmentPaybackMonths = 400,000 / 200,000
+investmentPaybackMonths = 2 months
+
+This wrong result means the app added first stock purchase into startup investment.
+
+---
+
+# Slice 3 — Add Purchase Cycle Selector
+
+## Purpose
+
+Stop the hidden weekly assumption in Simple Mode.
+
+The current Simple Mode asks:
+
+How many items do you expect to sell each week?
+
+This is not enough for informal businesses because many do not work weekly.
+
+---
+
+## Placement
+
+Place this question after:
+
+What kind of business is this?
+
+Before:
+
+Where will you sell, and how much do you expect to sell?
+
+---
+
+## New Question
+
+How do you usually buy stock or supplies?
+
+---
+
+## Helper Text
+
+Choose the option that best describes most of your stock, or the stock that takes most of your money.
+
+---
+
+## Options
+
+### Option 1
+
+Daily or a few times a week
+
+I buy stock often, then sell and buy again.
+
+Internal value:
+
+purchaseCycleType = "daily"
+
+---
+
+### Option 2
+
+Every week
+
+I usually restock once a week.
+
+Internal value:
+
+purchaseCycleType = "weekly"
+
+---
+
+### Option 3
+
+Every two weeks
+
+I usually restock after about two weeks.
+
+Internal value:
+
+purchaseCycleType = "biweekly"
+
+---
+
+### Option 4
+
+Once a month
+
+One purchase usually covers the month.
+
+Internal value:
+
+purchaseCycleType = "monthly"
+
+---
+
+### Option 5
+
+One big purchase that lasts many months
+
+I buy a sack, drum, container, or large batch that lasts for months.
+
+Internal value:
+
+purchaseCycleType = "bulk"
+
+---
+
+### Option 6
+
+No fixed schedule
+
+I buy when I have cash or when stock is available.
+
+Internal value:
+
+purchaseCycleType = "irregular"
+
+---
+
+## TypeScript Type
+
+```ts
+export type PurchaseCycleType =
+  | "daily"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "bulk"
+  | "irregular";

@@ -89,6 +89,39 @@ export interface GrowthRetentionGuidance {
   message: string;
 }
 
+export type PurchaseCycleType =
+  | 'daily'
+  | 'weekly'
+  | 'biweekly'
+  | 'monthly'
+  | 'bulk'
+  | 'irregular';
+
+export interface SimplePurchaseCycleInput {
+  purchaseCycleType: PurchaseCycleType;
+  purchasesPerWeek?: number;
+  costPerPurchase?: number;
+  dailySales?: number;
+  sellingDaysPerWeek?: number;
+  revenuePerCycle?: number;
+  monthlyStockCostInput?: number;
+  monthlyRevenueInput?: number;
+  bulkPurchaseCost?: number;
+  bulkLifespanMonths?: number;
+  purchaseEventsPerMonth?: number;
+  averagePurchaseAmount?: number;
+}
+
+export interface SimplePurchaseCycleNormalized {
+  monthlyRevenue: number;
+  monthlyVariableCost: number;
+  monthlyContribution: number;
+  dailyFloatRequired?: number;
+  monthlyReorderReserve?: number;
+  bulkCashNeededAtReorder?: number;
+  estimateWarning?: string;
+}
+
 export interface LoanAmortizationResult {
   monthlyPayment: number;
   firstMonthInterest: number;
@@ -97,6 +130,118 @@ export interface LoanAmortizationResult {
 
 const IRR_EPSILON = 0.000001;
 const IRR_MAX_ITERATIONS = 200;
+
+const WEEKS_PER_MONTH = 52 / 12;
+
+function safeNonNegativeNumber(value: number | undefined, fallback = 0): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(value, 0);
+}
+
+export function normalizeSimplePurchaseCycle(input: SimplePurchaseCycleInput): SimplePurchaseCycleNormalized {
+  switch (input.purchaseCycleType) {
+    case 'daily': {
+      const purchasesPerWeek = safeNonNegativeNumber(input.purchasesPerWeek);
+      const sellingDaysPerWeek = safeNonNegativeNumber(input.sellingDaysPerWeek, purchasesPerWeek);
+      const costPerPurchase = safeNonNegativeNumber(input.costPerPurchase);
+      const dailySales = safeNonNegativeNumber(input.dailySales);
+
+      const monthlyVariableCost = costPerPurchase * purchasesPerWeek * WEEKS_PER_MONTH;
+      const monthlyRevenue = dailySales * sellingDaysPerWeek * WEEKS_PER_MONTH;
+
+      return {
+        monthlyRevenue,
+        monthlyVariableCost,
+        monthlyContribution: monthlyRevenue - monthlyVariableCost,
+        dailyFloatRequired: costPerPurchase,
+      };
+    }
+
+    case 'weekly': {
+      const costPerPurchase = safeNonNegativeNumber(input.costPerPurchase);
+      const revenuePerCycle = safeNonNegativeNumber(input.revenuePerCycle);
+
+      const monthlyVariableCost = costPerPurchase * WEEKS_PER_MONTH;
+      const monthlyRevenue = revenuePerCycle * WEEKS_PER_MONTH;
+
+      return {
+        monthlyRevenue,
+        monthlyVariableCost,
+        monthlyContribution: monthlyRevenue - monthlyVariableCost,
+      };
+    }
+
+    case 'biweekly': {
+      const costPerPurchase = safeNonNegativeNumber(input.costPerPurchase);
+      const revenuePerCycle = safeNonNegativeNumber(input.revenuePerCycle);
+      const cyclesPerMonth = WEEKS_PER_MONTH / 2;
+
+      const monthlyVariableCost = costPerPurchase * cyclesPerMonth;
+      const monthlyRevenue = revenuePerCycle * cyclesPerMonth;
+
+      return {
+        monthlyRevenue,
+        monthlyVariableCost,
+        monthlyContribution: monthlyRevenue - monthlyVariableCost,
+      };
+    }
+
+    case 'monthly': {
+      const monthlyVariableCost = safeNonNegativeNumber(input.monthlyStockCostInput);
+      const monthlyRevenue = safeNonNegativeNumber(input.monthlyRevenueInput);
+
+      return {
+        monthlyRevenue,
+        monthlyVariableCost,
+        monthlyContribution: monthlyRevenue - monthlyVariableCost,
+      };
+    }
+
+    case 'bulk': {
+      const bulkPurchaseCost = safeNonNegativeNumber(input.bulkPurchaseCost);
+      const bulkLifespanMonths = Math.max(safeNonNegativeNumber(input.bulkLifespanMonths, 1), 1);
+      const monthlyRevenue = safeNonNegativeNumber(input.monthlyRevenueInput);
+      const monthlyVariableCost = bulkPurchaseCost / bulkLifespanMonths;
+
+      return {
+        monthlyRevenue,
+        monthlyVariableCost,
+        monthlyContribution: monthlyRevenue - monthlyVariableCost,
+        monthlyReorderReserve: monthlyVariableCost,
+        bulkCashNeededAtReorder: bulkPurchaseCost,
+      };
+    }
+
+    case 'irregular': {
+      const purchaseEventsPerMonth = safeNonNegativeNumber(input.purchaseEventsPerMonth);
+      const averagePurchaseAmount = safeNonNegativeNumber(input.averagePurchaseAmount);
+      const monthlyRevenue = safeNonNegativeNumber(input.monthlyRevenueInput);
+      const monthlyVariableCost = averagePurchaseAmount * purchaseEventsPerMonth;
+      const purchaseLabel = purchaseEventsPerMonth === 1 ? 'purchase' : 'purchases';
+
+      return {
+        monthlyRevenue,
+        monthlyVariableCost,
+        monthlyContribution: monthlyRevenue - monthlyVariableCost,
+        estimateWarning: `Based on your estimate of ${purchaseEventsPerMonth} ${purchaseLabel} per month.`,
+      };
+    }
+
+    default: {
+      const _exhaustive: never = input.purchaseCycleType;
+      void _exhaustive;
+
+      return {
+        monthlyRevenue: 0,
+        monthlyVariableCost: 0,
+        monthlyContribution: 0,
+      };
+    }
+  }
+}
 
 export function calculateUnitEconomics(input: UnitEconomicsInput): UnitEconomicsSnapshot {
   const safeBatchYield = input.batchYield > 0 ? input.batchYield : 1;
@@ -330,11 +475,11 @@ export function calculateSensitivityMatrix(input: {
 
   for (const costMultiplier of input.costMultipliers) {
     for (const revenueMultiplier of input.revenueMultipliers) {
-      const monthlyRevenue = input.monthlyRevenue * revenueMultiplier;
+      const scenarioMonthlyRevenue = input.monthlyRevenue * revenueMultiplier;
       const monthlyVariableCosts = input.monthlyVariableCosts * revenueMultiplier * costMultiplier;
       const monthlyFixedCosts = input.monthlyFixedCosts * costMultiplier;
       const snapshot = calculateMonthlyProfitSnapshot({
-        monthlyRevenue,
+        monthlyRevenue: scenarioMonthlyRevenue,
         monthlyVariableCosts,
         monthlyFixedCosts,
         monthlyDepreciation: input.monthlyDepreciation,
@@ -342,7 +487,7 @@ export function calculateSensitivityMatrix(input: {
         taxRatePercent: input.taxRatePercent,
       });
       const monthlyNetProfit = snapshot.netProfit;
-      const profitMargin = monthlyRevenue > 0 ? monthlyNetProfit / monthlyRevenue : 0;
+      const profitMargin = scenarioMonthlyRevenue > 0 ? monthlyNetProfit / scenarioMonthlyRevenue : 0;
       const status: SensitivityMatrixCell['status'] = monthlyNetProfit <= 0
         ? 'loss'
         : profitMargin < 0.05

@@ -473,12 +473,12 @@ export default function Step4Vision({
       formula: `${formatCurrency(results.totalInitialInvestment)} startup money ÷ ${formatCurrency(results.monthlyProfit)} monthly profit after costs = ${formatPaybackMonths(results.investmentPaybackMonths)}`,
       userValues: [
         { label: 'Startup costs entered', value: results.startupCostsEntered, formatted: formatCurrency(results.startupCostsEntered) },
-        { label: 'First month of stock or work supplies', value: results.firstStockCost, formatted: formatCurrency(results.firstStockCost) },
+        { label: 'Opening stock or work cash', value: results.firstStockCost, formatted: formatCurrency(results.firstStockCost) },
         { label: 'Your startup money', value: results.totalInitialInvestment, formatted: formatCurrency(results.totalInitialInvestment) },
         { label: 'Monthly profit after costs', value: results.monthlyProfit, formatted: formatCurrency(results.monthlyProfit) },
         { label: 'Time to recover startup money', value: results.investmentPaybackMonths, formatted: formatPaybackMonths(results.investmentPaybackMonths) },
       ],
-      explanation: 'This shows how long it takes for your monthly profit, after monthly costs, to pay back the money you needed to start and stock the business.',
+      explanation: 'This shows how long it takes for your monthly profit, after monthly costs, to pay back the money you needed to start the business and cover the first buying cycle.',
       analogy: 'timeline',
       visualType: 'timeline',
       actionText: 'Understood',
@@ -486,7 +486,7 @@ export default function Step4Vision({
       sections: [
         buildSection('Startup money used', [
           ...(startupCostRows.length > 0 ? startupCostRows : [{ label: 'No startup costs entered', value: formatCurrency(0) }]),
-          { label: 'First month of stock or work supplies', value: formatCurrency(results.firstStockCost) },
+          { label: 'Opening stock or work cash', value: formatCurrency(results.firstStockCost) },
           { label: 'Your startup money', value: `${formatCurrency(results.startupCostsEntered)} + ${formatCurrency(results.firstStockCost)} = ${formatCurrency(results.totalInitialInvestment)}`, emphasize: true },
         ], config.showProductionCosts ? ['Production costs per batch are used to find the cost to make one item. They are not counted as one-time startup unless you truly pay them only once.'] : undefined),
         buildSection('Monthly profit used', [
@@ -781,7 +781,7 @@ export default function Step4Vision({
             </h3>
             <p className="mt-2 text-vuna-slate">
               {showStartupRecovery
-                ? 'This uses the startup money you entered plus the cost of your first month of stock or work supplies.'
+                ? 'This uses the startup money you entered plus the cash needed for your first buying cycle.'
                 : results.isAgricultureMode
                   ? 'This uses your expected harvest revenue minus seasonal variable costs, including land rent when entered.'
                   : 'This focuses on recurring restock costs, selling prices, and the profit available from the business you already run.'}
@@ -792,7 +792,7 @@ export default function Step4Vision({
             <MetricCard
               label={showStartupRecovery ? 'Your startup money' : results.isAgricultureMode ? 'Season costs' : 'Monthly restock cost'}
               value={formatCurrency(showStartupRecovery ? results.totalInitialInvestment : results.isAgricultureMode ? results.totalVariableCosts : results.monthlyRestockCost)}
-              helper={showStartupRecovery ? 'Startup costs entered plus the cost of your first month of stock or work supplies.' : results.isAgricultureMode ? 'All variable crop-season costs used in this Simple Mode farm check.' : 'Money needed to replace stock or work inputs for the next normal month.'}
+              helper={showStartupRecovery ? 'Startup costs entered plus the cash needed for the first buying cycle.' : results.isAgricultureMode ? 'All variable crop-season costs used in this Simple Mode farm check.' : 'Money needed to replace stock or work inputs for the next normal month.'}
             />
             <MetricCard
               label={results.isAgricultureMode ? 'Season gross margin' : 'Monthly profit after costs'}
@@ -814,7 +814,7 @@ export default function Step4Vision({
               rows={showStartupRecovery
                 ? [
                     ...(startupCostRows.length > 0 ? startupCostRows : [{ label: 'No startup costs entered', value: formatCurrency(0) }]),
-                    { label: 'First month of stock or work supplies', value: formatCurrency(results.firstStockCost) },
+                    { label: 'Opening stock or work cash', value: formatCurrency(results.firstStockCost) },
                   ]
                 : results.isAgricultureMode
                   ? [

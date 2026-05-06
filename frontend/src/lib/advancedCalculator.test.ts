@@ -56,7 +56,7 @@ test('Advanced Mode quick summary uses the shared simple-summary engine', () => 
 
   const unitBaseCost = (state.rawMaterials + state.directLabor + state.packaging + state.otherVariable) / state.batchYield;
   const monthlyFixedOps = state.monthlyRent + state.monthlySalaries + state.monthlyOtherFixed + state.utilities + state.transport + state.marketing + state.otherOperating;
-  const totalStartupInvestment = state.equipmentCost + (monthlyFixedOps * 3);
+  const totalStartupInvestment = state.equipmentCost;
 
   const sharedSummary = calculateSharedSimpleSummary({
     lineItems: [
@@ -81,7 +81,44 @@ test('Advanced Mode quick summary uses the shared simple-summary engine', () => 
   assertClose(result.simpleSummary.monthlyProfit, sharedSummary.monthlyProfit, 'simpleSummary.monthlyProfit');
 });
 
-test('Advanced Mode exposes shared planner outputs for the new shared model', () => {
+test('Advanced Mode does not inflate capital investment with monthly operating costs', () => {
+  const state = createAdvancedState();
+  state.investmentSize = 0;
+  state.equipmentCost = 5_000_000;
+  state.monthlyRent = 1_000_000;
+  state.monthlySalaries = 0;
+  state.monthlyOtherFixed = 0;
+  state.utilities = 0;
+  state.transport = 0;
+  state.marketing = 0;
+  state.otherOperating = 0;
+
+  const result = calculateAdvancedRoadmap(state);
+
+  assertClose(result.monthlyFixedOps, 1_000_000, 'monthlyFixedOps');
+  assertClose(result.totalStartupInvestment, 5_000_000, 'totalStartupInvestment');
+  assertClose(result.investedCapital, 5_000_000, 'investedCapital');
+});
+
+test('Advanced Mode uses entered investment size as invested capital when available', () => {
+  const state = createAdvancedState();
+  state.investmentSize = 12_000_000;
+  state.equipmentCost = 5_000_000;
+  state.monthlyRent = 1_000_000;
+  state.monthlySalaries = 0;
+  state.monthlyOtherFixed = 0;
+  state.utilities = 0;
+  state.transport = 0;
+  state.marketing = 0;
+  state.otherOperating = 0;
+
+  const result = calculateAdvancedRoadmap(state);
+
+  assertClose(result.totalStartupInvestment, 5_000_000, 'totalStartupInvestment');
+  assertClose(result.investedCapital, 12_000_000, 'investedCapital');
+});
+
+test('Advanced Mode exposes first-class return and cash outputs without shared planner translation', () => {
   const state = createAdvancedState();
   state.loanAmount = 1_200_000;
   state.annualInterestRate = 24;
@@ -96,10 +133,10 @@ test('Advanced Mode exposes shared planner outputs for the new shared model', ()
   assert.equal(result.benchmarkRate, 0.14);
   assert.ok((result.benchmarkSpread ?? 0) > 0);
   assert.equal(result.benchmarkStatus, 'strong');
-  assert.equal(result.sharedPlannerOutputs.metrics.revenue, result.monthlyRevenue);
-  assert.equal(result.sharedPlannerOutputs.metrics.cash_position, result.monthlyCashPosition);
-  assert.equal(result.sharedPlannerOutputs.metrics.owner_distribution, result.ownerDistributionCapacity);
-  assert.equal(result.sharedPlannerOutputs.explanations.roic, 'Shows how hard the business is making your capital work.');
+  assert.equal(result.investedCapital, state.investmentSize);
+  assert.ok(result.monthlyCashPosition > result.monthlyNetProfit * 0.9);
+  assert.ok(result.ownerDistributionCapacity > 0);
+  assert.equal('sharedPlannerOutputs' in result, false);
 });
 
 test('Advanced Mode classifies operating costs into fixed, variable, and mixed buckets', () => {
@@ -138,7 +175,11 @@ test('Advanced Mode flags risky debt when operating profit cannot safely cover i
   assert.ok((result.interestCoverageRatio ?? 0) < 1.5, 'interestCoverageRatio should fall into risky range');
   assert.equal(result.interestCoverageStatus, 'risky');
   assert.match(result.interestCoverageMessage, /Debt service looks risky/i);
-  assert.ok(result.warnings.some((warning) => /Debt service looks risky/i.test(warning)));
+  assert.ok(result.warnings.some((warning) => (
+    warning.severity === 'critical'
+    && warning.code === 'risky_interest_coverage'
+    && /Debt service looks risky/i.test(warning.message)
+  )));
 });
 
 test('Advanced Mode explains when returns are below benchmark and cash lags profit', () => {
@@ -158,8 +199,51 @@ test('Advanced Mode explains when returns are below benchmark and cash lags prof
   assert.ok(result.monthlyCashPosition < 0);
   assertClose(result.cashBridge.cashPosition, result.monthlyCashPosition, 'cashBridge.cashPosition');
   assert.match(result.cashBridge.message, /cash squeeze/i);
-  assert.ok(result.warnings.some((warning) => /below the benchmark/i.test(warning)));
-  assert.ok(result.warnings.some((warning) => /cash squeeze/i.test(warning)));
+  assert.ok(result.warnings.some((warning) => (
+    warning.severity === 'warning'
+    && warning.code === 'weak_benchmark_return'
+    && /below the benchmark/i.test(warning.message)
+  )));
+  assert.ok(result.warnings.some((warning) => (
+    warning.severity === 'critical'
+    && warning.code === 'profit_cash_squeeze'
+    && /cash squeeze/i.test(warning.message)
+  )));
+});
+
+test('Advanced Mode groups critical warnings and notes by severity', () => {
+  const state = createAdvancedState();
+  state.rawMaterials = 1_200;
+  state.directLabor = 0;
+  state.packaging = 0;
+  state.otherVariable = 0;
+  state.batchYield = 1;
+  state.sellingPrice = 1_000;
+  state.unitsPerWeek = 10;
+  state.monthlyRent = 500_000;
+  state.monthlySalaries = 0;
+  state.monthlyOtherFixed = 0;
+  state.utilities = 0;
+  state.transport = 0;
+  state.marketing = 0;
+  state.otherOperating = 0;
+  state.loanAmount = 0;
+  state.annualInterestRate = 0;
+  state.loanTermMonths = 0;
+
+  const result = calculateAdvancedRoadmap(state);
+  const criticalMessages = result.warnings
+    .filter((warning) => warning.severity === 'critical')
+    .map((warning) => warning.message);
+  const noteCodes = result.warnings
+    .filter((warning) => warning.severity === 'note')
+    .map((warning) => warning.code);
+
+  assert.ok(result.monthlyNetProfit < 0);
+  assert.ok(criticalMessages.some((message) => /operating at a loss/i.test(message)));
+  assert.ok(criticalMessages.some((message) => /selling below your variable cost/i.test(message)));
+  assert.ok(noteCodes.includes('simplified_tax'));
+  assert.ok(noteCodes.includes('no_loan_entered'));
 });
 
 test('Advanced Mode builds sensitivity and reinvestment guidance for growth decisions', () => {

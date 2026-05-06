@@ -194,6 +194,16 @@ function getSharedSummaryForState(
     totalMonthlyFixedCosts,
     startupCostsEntered,
     includeStartupInvestment,
+    openingStockCycle: step2_buckets.stockRefillFrequency,
+    openingStockCycleDetails: {
+      purchasesPerWeek: step2_buckets.purchasesPerWeek,
+      sellingDaysPerWeek: step2_buckets.sellingDaysPerWeek,
+      costPerPurchase: step2_buckets.costPerPurchase,
+      bulkPurchaseCost: step2_buckets.bulkPurchaseCost,
+      bulkLifespanMonths: step2_buckets.bulkLifespanMonths,
+      purchaseEventsPerMonth: step2_buckets.purchaseEventsPerMonth,
+      averagePurchaseAmount: step2_buckets.averagePurchaseAmount,
+    },
     fallbackSelectedPrice: selectedPrice * (options?.priceMultiplier ?? 1),
     fallbackVariableCostPerUnit: unitBaseCost,
     fallbackContributionMargin: (selectedPrice * (options?.priceMultiplier ?? 1)) - unitBaseCost,
@@ -650,9 +660,9 @@ export const calculateRoadmap = (
 
   const startupMoneyWarning = step1_entry.businessStatus === 'new'
     ? sharedSummary.firstStockCost <= 0
-      ? 'Your startup money may be incomplete because we cannot see the cost of your first month of stock or work supplies yet.'
+      ? 'Your startup money may be incomplete because we cannot see the opening stock or work cash you need yet.'
       : startupCostsEntered <= 0
-        ? 'Your startup money only includes your first month of stock. Add one-time costs in Step 2 if you also need shelves, equipment, or opening cash.'
+        ? 'Your startup money only includes opening stock or work cash. Add one-time costs in Step 2 if you also need shelves, equipment, or opening cash.'
         : null
     : null;
   if (startupMoneyWarning) {

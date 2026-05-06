@@ -1,12 +1,13 @@
 import { BusinessType } from './lib/config';
 import type { WACMProductBreakdown } from './lib/wacm';
+import type { PurchaseCycleType } from './lib/sharedFinanceEngine';
 
 export type { BusinessType } from './lib/config';
 
 export type BusinessCategory = BusinessType | null;
 export type BusinessStatus = 'new' | 'ongoing';
 export type CostCategory = 'one-time' | 'monthly';
-export type StockRefillFrequency = 'weekly' | 'monthly' | 'as-needed';
+export type StockRefillFrequency = PurchaseCycleType | 'as-needed';
 export type LandUnit = 'acre' | 'hectare' | 'plot';
 export type LandStatus = 'owned' | 'rented';
 export type SeasonCycle = 1 | 2 | 'continuous';
@@ -120,6 +121,13 @@ export interface WizardState {
     fuelCosts: CostItem[];
     protectionCosts: CostItem[];
     stockRefillFrequency: StockRefillFrequency;
+    purchasesPerWeek?: number;
+    sellingDaysPerWeek?: number;
+    costPerPurchase?: number;
+    bulkPurchaseCost?: number;
+    bulkLifespanMonths?: number;
+    purchaseEventsPerMonth?: number;
+    averagePurchaseAmount?: number;
     batchYield: number;
     items: BusinessLineItem[];
   };

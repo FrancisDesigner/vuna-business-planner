@@ -1,9 +1,11 @@
 import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { AdvancedCostBehavior, AdvancedFormState } from '../types/advanced';
 import { calculateAdvancedRoadmap, AdvancedCalculationResult } from '../lib/advancedCalculator';
+import { advancedFormSchema, saveAdvancedFormIfValid } from '../lib/advancedFormSchema';
+import { shouldGateAdvancedInvestment } from '../lib/advancedInvestmentGate';
+import { ADVANCED_PURCHASE_CYCLE_BRIDGE_NOTE } from '../lib/advancedPurchaseCycleBridge';
 import {
   buildAdvancedPlanPayload,
   hydrateAdvancedFormFromStoredInputs,
@@ -31,47 +33,6 @@ import CurrencySelector from './CurrencySelector';
 
 const PlannerAuthDialog = lazy(() => import('./PlannerAuthDialog'));
 
-// Schema
-const schema = z.object({
-  businessName: z.string().min(1, 'Required'),
-  location: z.string().min(1, 'Required'),
-  industry: z.string().min(1, 'Required'),
-  investmentSize: z.number().min(0),
-  
-  rawMaterials: z.number().min(0),
-  directLabor: z.number().min(0),
-  packaging: z.number().min(0),
-  otherVariable: z.number().min(0),
-  batchYield: z.number().min(1, 'Must be at least 1'),
-
-  equipmentCost: z.number().min(0),
-  depreciationMethod: z.enum(['straight-line', 'declining-balance']),
-  usefulLife: z.number().min(0),
-  salvageValue: z.number().min(0),
-  monthlyRent: z.number().min(0),
-  monthlySalaries: z.number().min(0),
-  monthlyOtherFixed: z.number().min(0),
-
-  utilities: z.number().min(0),
-  utilitiesBehavior: z.enum(['fixed', 'variable', 'mixed']),
-  transport: z.number().min(0),
-  transportBehavior: z.enum(['fixed', 'variable', 'mixed']),
-  marketing: z.number().min(0),
-  marketingBehavior: z.enum(['fixed', 'variable', 'mixed']),
-  otherOperating: z.number().min(0),
-  otherOperatingBehavior: z.enum(['fixed', 'variable', 'mixed']),
-
-  loanAmount: z.number().min(0),
-  annualInterestRate: z.number().min(0),
-  loanTermMonths: z.number().min(0),
-
-  taxRate: z.number().min(0).max(100),
-
-  unitsPerWeek: z.number().min(0),
-  sellingPrice: z.number().min(0),
-  growthTargetPercent: z.number().min(0).max(100),
-});
-
 const defaultValues: AdvancedFormState = {
   businessName: '', location: '', industry: '', investmentSize: 0,
   rawMaterials: 0, directLabor: 0, packaging: 0, otherVariable: 0, batchYield: 1,
@@ -87,10 +48,10 @@ const defaultValues: AdvancedFormState = {
 };
 
 const growthTargetOptions = [
-  { value: 0, label: 'Stay steady', helper: 'Focus on protecting margin and cash.' },
-  { value: 15, label: 'Grow 15%', helper: 'Moderate growth with manageable extra stock or working inputs.' },
-  { value: 30, label: 'Grow 30%', helper: 'Serious growth that needs clear reinvestment discipline.' },
-  { value: 50, label: 'Grow 50%', helper: 'Aggressive growth that can strain cash fast.' },
+  { value: 0, label: 'Stay steady', helper: 'Protect profit and cash first.' },
+  { value: 15, label: 'Grow 15%', helper: 'Small growth that may need extra stock or working cash.' },
+  { value: 30, label: 'Grow 30%', helper: 'Strong growth that needs clear reinvestment planning.' },
+  { value: 50, label: 'Grow 50%', helper: 'Aggressive growth that can strain cash.' },
 ] as const;
 
 const ADVANCED_UNLOCK_STORAGE_KEY = 'vuna_advanced_unlocked';
@@ -114,7 +75,7 @@ type PlannerAuthScreen = 'register' | 'login';
 
 const sectionNav = [
   { id: 'profile', label: 'Profile' },
-  { id: 'variable-costs', label: 'Variable Costs' },
+  { id: 'variable-costs', label: 'Production Costs' },
   { id: 'fixed-costs', label: 'Fixed Costs' },
   { id: 'operating-costs', label: 'Operating Costs' },
   { id: 'financing', label: 'Financing' },
@@ -127,9 +88,9 @@ const costBehaviorOptions: Array<{
   label: string;
   helper: string;
 }> = [
-  { value: 'fixed', label: 'Fixed', helper: 'Stays broadly the same even when sales change.' },
-  { value: 'variable', label: 'Variable', helper: 'Moves with sales volume or activity level.' },
-  { value: 'mixed', label: 'Mixed', helper: 'Partly fixed and partly tied to business volume.' },
+  { value: 'fixed', label: 'Fixed', helper: 'This cost usually stays the same even when sales change.' },
+  { value: 'variable', label: 'Variable', helper: 'This cost usually increases when sales increase.' },
+  { value: 'mixed', label: 'Mixed', helper: 'Part of this cost is fixed, and part changes with sales.' },
 ];
 
 function CostBehaviorSelector({
@@ -254,7 +215,7 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
   ].filter(Boolean))) as string[];
 
   const { register, control, handleSubmit, setValue, getValues, reset, watch, formState: { errors } } = useForm<AdvancedFormState>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(advancedFormSchema),
     defaultValues,
   });
 
@@ -312,13 +273,11 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
   const formValues = watch();
   useEffect(() => {
     const timer = setTimeout(() => {
-      localStorage.setItem('vuna_advanced_form', JSON.stringify(formValues));
-      if (isAdvancedUnlocked) {
+      const validForm = saveAdvancedFormIfValid(localStorage, 'vuna_advanced_form', formValues);
+
+      if (isAdvancedUnlocked && validForm) {
         // Recalculate while the local Advanced preview is unlocked.
-        const parsed = schema.safeParse(formValues);
-        if (parsed.success) {
-          setResults(calculateAdvancedRoadmap(parsed.data));
-        }
+        setResults(calculateAdvancedRoadmap(validForm));
       }
     }, 500);
     return () => clearTimeout(timer);
@@ -330,7 +289,11 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
     onCurrencyChange?.(nextCurrencyCode);
   };
 
-  if (formValues.investmentSize > investmentGuidanceLimit) {
+  if (shouldGateAdvancedInvestment({
+    investmentSize: formValues.investmentSize,
+    equipmentCost: formValues.equipmentCost,
+    investmentGuidanceLimit,
+  })) {
     return (
       <div className="min-h-screen bg-vuna-bg flex items-center justify-center p-4">
         <Card className="max-w-md w-full text-center p-8 border-red-200 rounded-3xl">
@@ -349,7 +312,7 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
   }
 
   const handleUnlockAdvancedPreview = () => {
-    const parsed = schema.safeParse(getValues());
+    const parsed = advancedFormSchema.safeParse(getValues());
     if (!parsed.success) {
       alert('Please fill all required fields correctly before proceeding.');
       return;
@@ -668,7 +631,10 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
             />
           </div>
           <p className="text-vuna-slate max-w-2xl mx-auto">
-            This tool is for single-product, simple business models with total investment up to {formatPlannerCurrency(investmentGuidanceLimit, currencyCode)}. Results are estimates. For larger investments or complex structures, please join our Expert Mode waitlist.
+            Use this for a growing small business where you know your costs, selling price, production volume, and loan details. The results are estimates to help you understand profit, cash flow, debt safety, and return on investment.
+          </p>
+          <p className="text-sm text-vuna-slate max-w-2xl mx-auto">
+            For large investments or complex businesses, use Expert Mode when available.
           </p>
         </div>
 
@@ -700,7 +666,7 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
           <Card id="profile" className="scroll-mt-36 rounded-3xl border-neutral-200 shadow-sm">
             <CardHeader>
               <CardTitle className="text-vuna-dark">1. Business Profile</CardTitle>
-              <CardDescription className="text-vuna-slate">Enter basic information about your business.</CardDescription>
+              <CardDescription className="text-vuna-slate">Tell us what business we are analysing.</CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
@@ -716,7 +682,7 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
                 </select>
               </div>
               <div className="space-y-2">
-                <Label className="text-vuna-dark">Industry</Label>
+                <Label className="text-vuna-dark">Business type / industry</Label>
                 <select {...register('industry')} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vuna-primary">
                   <option value="">Select...</option>
                   <option value="Retail">Retail</option>
@@ -726,23 +692,28 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
                   <option value="Other">Other</option>
                 </select>
               </div>
-              <NumberInput name="investmentSize" label="Planned Investment" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
+              <div className="space-y-2">
+                <NumberInput name="investmentSize" label="Total money you plan to invest" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
+                <p className="text-xs leading-5 text-vuna-slate">
+                  Include money for equipment, setup, and any other capital you are putting into the business. Do not include normal monthly expenses here.
+                </p>
+              </div>
             </CardContent>
           </Card>
 
           {/* Section 2 */}
           <Card id="variable-costs" className="scroll-mt-36 rounded-3xl border-neutral-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-vuna-dark">2. Variable Costs (Production Costs)</CardTitle>
-              <CardDescription className="text-vuna-slate">These are costs that increase with each unit produced.</CardDescription>
+              <CardTitle className="text-vuna-dark">2. Production or Stock Costs</CardTitle>
+              <CardDescription className="text-vuna-slate">These are costs that increase when you produce or sell more.</CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <NumberInput name="rawMaterials" label="Raw Materials (per unit or batch)" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
-              <NumberInput name="directLabor" label="Direct Labor (per unit or batch)" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
+              <NumberInput name="rawMaterials" label="Raw materials or stock bought" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
+              <NumberInput name="directLabor" label="Direct labour for production or selling" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
               <NumberInput name="packaging" label="Packaging" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
-              <NumberInput name="otherVariable" label="Other Variable Costs" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
+              <NumberInput name="otherVariable" label="Other costs that change with production or sales" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
               <div className="space-y-2 md:col-span-2 bg-vuna-primary/10 p-4 rounded-xl">
-                <Label className="text-vuna-dark">Batch Size (units produced)</Label>
+                <Label className="text-vuna-dark">How many units come from this batch?</Label>
                 <Input 
                   type="number" 
                   {...register('batchYield', { valueAsNumber: true })} 
@@ -750,7 +721,7 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
                   className="max-w-xs focus-visible:ring-vuna-primary"
                 />
                 <p className="text-sm text-vuna-primary mt-2 font-medium">
-                  Cost per Unit: {formatPlannerCurrency(currentUnitBaseCost, currencyCode)}
+                  Estimated cost for one unit: {formatPlannerCurrency(currentUnitBaseCost, currencyCode)}
                 </p>
               </div>
             </CardContent>
@@ -760,11 +731,14 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
           <Card id="fixed-costs" className="scroll-mt-36 rounded-3xl border-neutral-200 shadow-sm">
             <CardHeader>
               <CardTitle className="text-vuna-dark">3. Fixed Costs</CardTitle>
-              <CardDescription className="text-vuna-slate">These are costs that do not change with production volume.</CardDescription>
+              <CardDescription className="text-vuna-slate">These are costs you usually pay even when sales are low.</CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border border-neutral-200 rounded-xl bg-neutral-50/50">
-                <NumberInput name="equipmentCost" label="Equipment Cost" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
+                <div className="space-y-2">
+                  <NumberInput name="equipmentCost" label="Equipment Cost" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
+                  <p className="text-xs leading-5 text-vuna-slate">Money spent on machines, tools, or equipment.</p>
+                </div>
                 <div className="space-y-2">
                   <Label className="text-vuna-dark">Depreciation Method</Label>
                   <select {...register('depreciationMethod')} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vuna-primary">
@@ -776,11 +750,11 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
                   <Label className="text-vuna-dark">Useful Life (years)</Label>
                   <Input type="number" {...register('usefulLife', { valueAsNumber: true })} min="1" className="focus-visible:ring-vuna-primary" />
                 </div>
-                <NumberInput name="salvageValue" label="Salvage Value" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
+                <NumberInput name="salvageValue" label="Expected value after useful life" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
               </div>
               <NumberInput name="monthlyRent" label="Monthly Rent" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
-              <NumberInput name="monthlySalaries" label="Administrative Salaries" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
-              <NumberInput name="monthlyOtherFixed" label="Other Fixed Costs" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
+              <NumberInput name="monthlySalaries" label="Monthly admin salaries" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
+              <NumberInput name="monthlyOtherFixed" label="Other monthly fixed costs" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
             </CardContent>
           </Card>
 
@@ -788,7 +762,7 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
           <Card id="operating-costs" className="scroll-mt-36 rounded-3xl border-neutral-200 shadow-sm">
             <CardHeader>
               <CardTitle className="text-vuna-dark">4. Operating Costs</CardTitle>
-              <CardDescription className="text-vuna-slate">Costs required to run the business on a daily or monthly basis. Tag each one as fixed, variable, or mixed so the planner can judge your cost structure risk better.</CardDescription>
+              <CardDescription className="text-vuna-slate">These are regular costs for running the business. For each cost, choose whether it stays the same, changes with sales, or is partly both.</CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4 rounded-2xl border border-neutral-200 bg-neutral-50/60 p-4">
@@ -814,12 +788,12 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
           <Card id="financing" className="scroll-mt-36 rounded-3xl border-neutral-200 shadow-sm">
             <CardHeader>
               <CardTitle className="text-vuna-dark">5. Financing</CardTitle>
-              <CardDescription className="text-vuna-slate">Leave at 0 if no loan.</CardDescription>
+              <CardDescription className="text-vuna-slate">Enter loan details only if this business has a loan. Leave as 0 if there is no loan.</CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <NumberInput name="loanAmount" label="Loan Amount" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
               <div className="space-y-2">
-                <Label className="text-vuna-dark">Interest Rate (%)</Label>
+                <Label className="text-vuna-dark">Annual interest rate (%)</Label>
                 <Input type="number" step="0.1" {...register('annualInterestRate', { valueAsNumber: true })} className="focus-visible:ring-vuna-primary" />
               </div>
               <div className="space-y-2">
@@ -839,13 +813,13 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
                 <Label className="text-vuna-dark">Tax Rate (%)</Label>
                 <Input type="number" {...register('taxRate', { valueAsNumber: true })} className="focus-visible:ring-vuna-primary" />
                 <p className="text-xs text-vuna-slate mt-1">
-                  Disclaimer: This is a simplified flat percentage applied to monthly net profit. Actual tax liabilities may vary based on local laws, deductions, and business structure.
+                  This is only a simplified estimate. Actual tax can depend on your country, business type, deductions, and tax rules.
                 </p>
               </div>
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
                 <p className="text-amber-800 text-sm font-medium flex items-start gap-2">
                   <AlertTriangle className="w-5 h-5 shrink-0" />
-                  Working Capital Note: We do not calculate working capital in this mode. For businesses with inventory or credit sales, ensure you have extra cash on hand. Expert Mode will calculate exact working capital needs.
+                  Working capital note: This mode gives an estimate, but it does not fully calculate stock timing, customer credit, or supplier credit. If your business holds a lot of stock or sells on credit, keep extra cash available.
                 </p>
               </div>
             </CardContent>
@@ -859,8 +833,11 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label className="text-vuna-dark">Units Sold per Week</Label>
+                  <Label className="text-vuna-dark">Units sold in a normal week</Label>
                   <Input type="number" {...register('unitsPerWeek', { valueAsNumber: true })} className="focus-visible:ring-vuna-primary" />
+                  <p className="text-xs leading-5 text-vuna-slate">
+                    {ADVANCED_PURCHASE_CYCLE_BRIDGE_NOTE}
+                  </p>
                 </div>
                 <NumberInput name="sellingPrice" label="Selling Price per Unit" watch={watch} setValue={setValue} errors={errors} currencyCode={currencyCode} />
               </div>
@@ -868,7 +845,7 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
               <div className="space-y-3 rounded-2xl border border-neutral-200 bg-neutral-50/60 p-4">
                 <div>
                   <p className="text-sm font-semibold text-vuna-dark">Growth target for the next year</p>
-                  <p className="mt-1 text-sm text-vuna-slate">This helps Advanced Mode show how much profit may need to stay in the business instead of being taken home.</p>
+                  <p className="mt-1 text-sm text-vuna-slate">This helps show how much profit may need to stay in the business instead of being taken home.</p>
                 </div>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                   {growthTargetOptions.map((option) => {
@@ -913,12 +890,12 @@ export default function AdvancedWizard({ onBack, onGoToExpert, marketContext, cu
         {!isAdvancedUnlocked ? (
           <div className="mt-12 text-center space-y-6 bg-vuna-primary/10 border-2 border-vuna-primary/20 p-8 rounded-3xl">
             <Lock className="w-12 h-12 text-vuna-primary mx-auto" />
-            <h3 className="text-2xl font-bold text-vuna-dark">Unlock Advanced Preview</h3>
+            <h3 className="text-2xl font-bold text-vuna-dark">Show Advanced Analysis</h3>
             <p className="text-vuna-slate max-w-md mx-auto">
               Generate the full Advanced roadmap on this device. Cloud save and reload use your VunaBooks paid planner account when you are online.
             </p>
             <Button onClick={handleUnlockAdvancedPreview} size="lg" className="w-full max-w-md text-lg py-6 bg-vuna-primary hover:bg-vuna-primary/90 text-white rounded-xl">
-              Generate Advanced Preview
+              Show Advanced Analysis
             </Button>
           </div>
         ) : (

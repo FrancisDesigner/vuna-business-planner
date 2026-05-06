@@ -42,6 +42,13 @@ function createBaseState(): WizardState {
       fuelCosts: [],
       protectionCosts: [],
       stockRefillFrequency: 'weekly',
+      purchasesPerWeek: 5,
+      sellingDaysPerWeek: 6,
+      costPerPurchase: 0,
+      bulkPurchaseCost: 0,
+      bulkLifespanMonths: 1,
+      purchaseEventsPerMonth: 1,
+      averagePurchaseAmount: 0,
       batchYield: 1,
       items: [
         {
@@ -93,10 +100,10 @@ test('G-001 computes constitution-compliant Simple Mode break-even and payback o
   assertClose(result.monthlyRevenue, 2_166_666.6666666665, 'monthlyRevenue');
   assertClose(result.monthlyVariableCosts, 866_666.6666666666, 'monthlyVariableCosts');
   assertClose(result.monthlyProfit, 400_000, 'monthlyProfit');
-  assertClose(result.firstStockCost, 866_666.6666666666, 'firstStockCost');
-  assertClose(result.totalInitialInvestment, 866_666.6666666666, 'totalInitialInvestment');
-  assertClose(result.investmentPaybackMonths, 2.1666666666666665, 'investmentPaybackMonths');
-  assertClose(result.projectedHarvest12Months, 3_933_333.3333333335, 'projectedHarvest12Months');
+  assertClose(result.firstStockCost, 200_000, 'firstStockCost');
+  assertClose(result.totalInitialInvestment, 200_000, 'totalInitialInvestment');
+  assertClose(result.investmentPaybackMonths, 0.5, 'investmentPaybackMonths');
+  assertClose(result.projectedHarvest12Months, 4_600_000, 'projectedHarvest12Months');
   assertClose(result.projectedHarvestYear2, 4_800_000, 'projectedHarvestYear2');
   assertClose(result.safetyBufferAmount, 80_000, 'safetyBufferAmount');
   assertClose(result.safeTakeHomeAmount, 320_000, 'safeTakeHomeAmount');
@@ -107,6 +114,96 @@ test('G-001 computes constitution-compliant Simple Mode break-even and payback o
   assertClose(result.requiredUnitsPerWeek, 34.61538461538461, 'requiredUnitsPerWeek');
   assertClose(result.unitsPerWeekGap, 0, 'unitsPerWeekGap');
   assertClose(result.breakEvenPriceNeeded, 8_153.846153846154, 'breakEvenPriceNeeded');
+});
+
+test('G-001b monthly restocking uses a full month of opening stock cash', () => {
+  const state = createBaseState();
+  state.step1_entry.salesPerWeek = 50;
+  state.step2_buckets.stockRefillFrequency = 'monthly';
+  state.step2_buckets.batchYield = 1;
+  state.step2_buckets.seedCosts = [
+    { id: 'seed-1', name: 'Raw materials', amount: 4_000, costCategory: 'one-time' },
+  ];
+  state.step2_buckets.foundationCosts = [
+    { id: 'found-1', name: 'Workspace rent', amount: 600_000, costCategory: 'monthly' },
+  ];
+  state.step2_buckets.fuelCosts = [
+    { id: 'fuel-1', name: 'Utilities', amount: 200_000, costCategory: 'monthly' },
+  ];
+  state.step2_buckets.protectionCosts = [
+    { id: 'prot-1', name: 'Insurance', amount: 100_000, costCategory: 'monthly' },
+  ];
+  state.step3_strategy.selectedPrice = 10_000;
+
+  const result = calculateRoadmap(state, 'manufacturing');
+
+  assertClose(result.monthlyVariableCosts, 866_666.6666666666, 'monthlyVariableCosts');
+  assertClose(result.firstStockCost, 866_666.6666666666, 'firstStockCost');
+  assertClose(result.totalInitialInvestment, 866_666.6666666666, 'totalInitialInvestment');
+  assertClose(result.investmentPaybackMonths, 2.1666666666666665, 'investmentPaybackMonths');
+});
+
+test('G-001c exposed purchase cycles change opening cash without changing monthly profit', () => {
+  const state = createBaseState();
+  state.step1_entry.salesPerWeek = 50;
+  state.step2_buckets.batchYield = 1;
+  state.step2_buckets.seedCosts = [
+    { id: 'seed-1', name: 'Raw materials', amount: 4_000, costCategory: 'one-time' },
+  ];
+  state.step2_buckets.foundationCosts = [
+    { id: 'found-1', name: 'Workspace rent', amount: 600_000, costCategory: 'monthly' },
+  ];
+  state.step2_buckets.fuelCosts = [
+    { id: 'fuel-1', name: 'Utilities', amount: 200_000, costCategory: 'monthly' },
+  ];
+  state.step2_buckets.protectionCosts = [
+    { id: 'prot-1', name: 'Insurance', amount: 100_000, costCategory: 'monthly' },
+  ];
+  state.step3_strategy.selectedPrice = 10_000;
+
+  const daily = calculateRoadmap({
+    ...state,
+    step2_buckets: {
+      ...state.step2_buckets,
+      stockRefillFrequency: 'daily',
+      purchasesPerWeek: 5,
+      costPerPurchase: 45_000,
+    },
+  }, 'manufacturing');
+  const biweekly = calculateRoadmap({
+    ...state,
+    step2_buckets: {
+      ...state.step2_buckets,
+      stockRefillFrequency: 'biweekly',
+    },
+  }, 'manufacturing');
+  const bulk = calculateRoadmap({
+    ...state,
+    step2_buckets: {
+      ...state.step2_buckets,
+      stockRefillFrequency: 'bulk',
+      bulkPurchaseCost: 1_200_000,
+      bulkLifespanMonths: 3,
+    },
+  }, 'manufacturing');
+  const irregular = calculateRoadmap({
+    ...state,
+    step2_buckets: {
+      ...state.step2_buckets,
+      stockRefillFrequency: 'irregular',
+      purchaseEventsPerMonth: 2,
+      averagePurchaseAmount: 250_000,
+    },
+  }, 'manufacturing');
+
+  assertClose(daily.monthlyProfit, 400_000, 'daily monthlyProfit');
+  assertClose(daily.firstStockCost, 45_000, 'daily firstStockCost');
+  assertClose(biweekly.monthlyProfit, 400_000, 'biweekly monthlyProfit');
+  assertClose(biweekly.firstStockCost, 400_000, 'biweekly firstStockCost');
+  assertClose(bulk.monthlyProfit, 400_000, 'bulk monthlyProfit');
+  assertClose(bulk.firstStockCost, 1_200_000, 'bulk firstStockCost');
+  assertClose(irregular.monthlyProfit, 400_000, 'irregular monthlyProfit');
+  assertClose(irregular.firstStockCost, 250_000, 'irregular firstStockCost');
 });
 
 test('G-002 uses WACM for multi-product operating break-even and allocation', () => {
@@ -233,7 +330,7 @@ test('G-006 strict rounding verification stays within 1 UGX of the constitution 
   assert.ok(Math.abs(Math.round(result.safeTakeHomeDailyAmount) - 58_467) <= 1, 'safeTakeHomeDailyAmount within 1 UGX');
   assert.equal(Math.round(result.safetyBufferWeeklyAmount), 102_597, 'safetyBufferWeeklyAmount rounded');
   assert.equal(Math.round(result.safetyBufferDailyAmount), 14_617, 'safetyBufferDailyAmount rounded');
-  assert.equal(result.investmentPaybackMonths.toFixed(2), '2.33', 'investmentPaybackMonths display');
+  assert.equal(result.investmentPaybackMonths.toFixed(2), '0.54', 'investmentPaybackMonths display');
   assert.equal(Math.ceil(result.operatingBreakEvenUnits), 112, 'operatingBreakEvenUnits target');
 });
 

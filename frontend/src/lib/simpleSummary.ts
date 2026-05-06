@@ -1,7 +1,11 @@
+import { normalizeSimplePurchaseCycle, type SimplePurchaseCycleInput } from './sharedFinanceEngine';
 import { allocateBreakEven, computeWACM, type LineItem, type WACMProductBreakdown } from './wacm';
 
 export const WEEKS_PER_MONTH = 52 / 12;
 export const DAYS_PER_MONTH = 365 / 12;
+
+type OpeningStockCycle = SimplePurchaseCycleInput['purchaseCycleType'] | 'as-needed';
+
 export interface SharedSimpleSummaryResult {
   selectedPrice: number;
   weightedAvgVariableCost: number;
@@ -39,9 +43,83 @@ interface SharedSimpleSummaryInput {
   totalMonthlyFixedCosts: number;
   startupCostsEntered: number;
   includeStartupInvestment?: boolean;
+  openingStockCycle?: OpeningStockCycle;
+  openingStockCycleDetails?: Partial<Omit<SimplePurchaseCycleInput, 'purchaseCycleType'>>;
   fallbackSelectedPrice?: number;
   fallbackVariableCostPerUnit?: number;
   fallbackContributionMargin?: number;
+}
+
+function calculateOpeningStockCost(input: {
+  openingStockCycle: OpeningStockCycle;
+  weeklyVariableCosts: number;
+  monthlyVariableCosts: number;
+  details?: Partial<Omit<SimplePurchaseCycleInput, 'purchaseCycleType'>>;
+}): number {
+  const cycle = input.openingStockCycle === 'as-needed' ? 'irregular' : input.openingStockCycle;
+
+  switch (cycle) {
+    case 'daily': {
+      const purchasesPerWeek = input.details?.purchasesPerWeek && input.details.purchasesPerWeek > 0
+        ? input.details.purchasesPerWeek
+        : 1;
+      const costPerPurchase = input.details?.costPerPurchase && input.details.costPerPurchase > 0
+        ? input.details.costPerPurchase
+        : input.weeklyVariableCosts / purchasesPerWeek;
+      const normalized = normalizeSimplePurchaseCycle({
+        purchaseCycleType: 'daily',
+        purchasesPerWeek,
+        costPerPurchase,
+      });
+
+      return normalized.dailyFloatRequired ?? costPerPurchase;
+    }
+
+    case 'weekly':
+      return input.weeklyVariableCosts;
+
+    case 'biweekly':
+      return input.weeklyVariableCosts * 2;
+
+    case 'monthly':
+      return input.monthlyVariableCosts;
+
+    case 'bulk': {
+      const bulkPurchaseCost = input.details?.bulkPurchaseCost && input.details.bulkPurchaseCost > 0
+        ? input.details.bulkPurchaseCost
+        : input.monthlyVariableCosts;
+      const normalized = normalizeSimplePurchaseCycle({
+        purchaseCycleType: 'bulk',
+        bulkPurchaseCost,
+        bulkLifespanMonths: input.details?.bulkLifespanMonths,
+      });
+
+      return normalized.bulkCashNeededAtReorder ?? bulkPurchaseCost;
+    }
+
+    case 'irregular': {
+      const purchaseEventsPerMonth = input.details?.purchaseEventsPerMonth && input.details.purchaseEventsPerMonth > 0
+        ? input.details.purchaseEventsPerMonth
+        : 1;
+      const averagePurchaseAmount = input.details?.averagePurchaseAmount && input.details.averagePurchaseAmount > 0
+        ? input.details.averagePurchaseAmount
+        : input.monthlyVariableCosts / purchaseEventsPerMonth;
+      const normalized = normalizeSimplePurchaseCycle({
+        purchaseCycleType: 'irregular',
+        purchaseEventsPerMonth,
+        averagePurchaseAmount,
+      });
+
+      return purchaseEventsPerMonth > 0 ? normalized.monthlyVariableCost / purchaseEventsPerMonth : averagePurchaseAmount;
+    }
+
+    default: {
+      const _exhaustive: never = cycle;
+      void _exhaustive;
+
+      return input.weeklyVariableCosts;
+    }
+  }
 }
 
 export function calculateSharedSimpleSummary({
@@ -49,6 +127,8 @@ export function calculateSharedSimpleSummary({
   totalMonthlyFixedCosts,
   startupCostsEntered,
   includeStartupInvestment = true,
+  openingStockCycle = 'monthly',
+  openingStockCycleDetails,
   fallbackSelectedPrice = 0,
   fallbackVariableCostPerUnit = 0,
   fallbackContributionMargin,
@@ -68,11 +148,21 @@ export function calculateSharedSimpleSummary({
 
   const totalUnitsPerWeek = wacmResult.totalUnitsPerWeek;
   const monthlySales = totalUnitsPerWeek * WEEKS_PER_MONTH;
-  const monthlyRevenue = selectedPrice * monthlySales;
-  const monthlyVariableCosts = weightedAvgVariableCost * monthlySales;
-  const firstStockCost = monthlyVariableCosts;
+  const weeklyCycle = normalizeSimplePurchaseCycle({
+    purchaseCycleType: 'weekly',
+    costPerPurchase: wacmResult.weeklyVariableCosts,
+    revenuePerCycle: wacmResult.weeklyRevenue,
+  });
+  const monthlyRevenue = weeklyCycle.monthlyRevenue;
+  const monthlyVariableCosts = weeklyCycle.monthlyVariableCost;
+  const firstStockCost = calculateOpeningStockCost({
+    openingStockCycle,
+    weeklyVariableCosts: wacmResult.weeklyVariableCosts,
+    monthlyVariableCosts,
+    details: openingStockCycleDetails,
+  });
   const totalStartupMoney = includeStartupInvestment ? startupCostsEntered + firstStockCost : 0;
-  const monthlyProfit = monthlyRevenue - monthlyVariableCosts - totalMonthlyFixedCosts;
+  const monthlyProfit = weeklyCycle.monthlyContribution - totalMonthlyFixedCosts;
   const monthlyRestockCost = monthlyVariableCosts;
   const safetyBufferAmount = monthlyProfit > 0 ? monthlyProfit * 0.2 : 0;
   const safeTakeHomeAmount = monthlyProfit > 0 ? monthlyProfit - safetyBufferAmount : 0;

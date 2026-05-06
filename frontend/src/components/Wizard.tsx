@@ -75,6 +75,13 @@ const initialState: WizardState = {
     fuelCosts: [],
     protectionCosts: [],
     stockRefillFrequency: 'weekly',
+    purchasesPerWeek: 5,
+    sellingDaysPerWeek: 6,
+    costPerPurchase: 0,
+    bulkPurchaseCost: 0,
+    bulkLifespanMonths: 1,
+    purchaseEventsPerMonth: 1,
+    averagePurchaseAmount: 0,
     batchYield: 1,
     items: [
       {

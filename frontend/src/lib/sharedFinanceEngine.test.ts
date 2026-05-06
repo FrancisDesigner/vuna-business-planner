@@ -12,6 +12,7 @@ import {
   calculateLoanAmortization,
   calculateMonthlyProfitSnapshot,
   calculateNetPresentValue,
+  normalizeSimplePurchaseCycle,
   compareReturnToBenchmark,
   calculateReturnOnInvestedCapital,
   calculateUnitEconomics,
@@ -39,6 +40,54 @@ test('unit economics returns contribution and weekly amounts', () => {
   assertClose(result.contributionMarginPerUnit, 3_200, 'contributionMarginPerUnit');
   assertClose(result.weeklyRevenue, 780_000, 'weeklyRevenue');
   assertClose(result.weeklyVariableCosts, 396_000, 'weeklyVariableCosts');
+});
+
+test('simple purchase cycle normalizes daily, weekly, and biweekly cycles to monthly totals', () => {
+  const daily = normalizeSimplePurchaseCycle({
+    purchaseCycleType: 'daily',
+    purchasesPerWeek: 6,
+    costPerPurchase: 50_000,
+    dailySales: 90_000,
+  });
+  const weekly = normalizeSimplePurchaseCycle({
+    purchaseCycleType: 'weekly',
+    costPerPurchase: 300_000,
+    revenuePerCycle: 540_000,
+  });
+  const biweekly = normalizeSimplePurchaseCycle({
+    purchaseCycleType: 'biweekly',
+    costPerPurchase: 600_000,
+    revenuePerCycle: 1_080_000,
+  });
+
+  assertClose(daily.monthlyVariableCost, 1_300_000, 'daily monthlyVariableCost');
+  assertClose(daily.monthlyRevenue, 2_340_000, 'daily monthlyRevenue');
+  assertClose(daily.monthlyContribution, 1_040_000, 'daily monthlyContribution');
+  assertClose(daily.dailyFloatRequired ?? 0, 50_000, 'dailyFloatRequired');
+  assertClose(weekly.monthlyContribution, 1_040_000, 'weekly monthlyContribution');
+  assertClose(biweekly.monthlyContribution, 1_040_000, 'biweekly monthlyContribution');
+});
+
+test('simple purchase cycle protects bulk and irregular estimates from invalid inputs', () => {
+  const bulk = normalizeSimplePurchaseCycle({
+    purchaseCycleType: 'bulk',
+    bulkPurchaseCost: 1_200_000,
+    bulkLifespanMonths: 0,
+    monthlyRevenueInput: 2_000_000,
+  });
+  const irregular = normalizeSimplePurchaseCycle({
+    purchaseCycleType: 'irregular',
+    purchaseEventsPerMonth: 1,
+    averagePurchaseAmount: -50_000,
+    monthlyRevenueInput: 900_000,
+  });
+
+  assertClose(bulk.monthlyVariableCost, 1_200_000, 'bulk monthlyVariableCost');
+  assertClose(bulk.monthlyContribution, 800_000, 'bulk monthlyContribution');
+  assertClose(bulk.monthlyReorderReserve ?? 0, 1_200_000, 'monthlyReorderReserve');
+  assertClose(bulk.bulkCashNeededAtReorder ?? 0, 1_200_000, 'bulkCashNeededAtReorder');
+  assertClose(irregular.monthlyVariableCost, 0, 'irregular monthlyVariableCost');
+  assert.match(irregular.estimateWarning || '', /1 purchase per month/);
 });
 
 test('annuity payment and amortization schedule stay consistent', () => {
@@ -113,6 +162,23 @@ test('sensitivity matrix counts profitable scenarios and identifies loss cases',
   assert.equal(matrix.profitableScenarios, 5);
   assert.ok(matrix.lossCases.some((entry) => /sales drop/i.test(entry)));
   assert.match(matrix.summary, /5 of 6/i);
+});
+
+test('sensitivity matrix classifies profit margin against scenario revenue', () => {
+  const matrix = calculateSensitivityMatrix({
+    monthlyRevenue: 1_000_000,
+    monthlyVariableCosts: 500_000,
+    monthlyFixedCosts: 360_000,
+    monthlyDepreciation: 0,
+    monthlyInterestCost: 0,
+    taxRatePercent: 0,
+    revenueMultipliers: [0.8],
+    costMultipliers: [1],
+  });
+
+  assert.equal(matrix.cells.length, 1);
+  assertClose(matrix.cells[0].monthlyNetProfit, 40_000, 'scenario monthlyNetProfit');
+  assert.equal(matrix.cells[0].status, 'profit');
 });
 
 test('growth retention guidance shows shortfall when growth needs outrun cash', () => {

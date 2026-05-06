@@ -1,5 +1,4 @@
 import { AdvancedFormState } from '../types/advanced';
-import { buildSharedPlannerOutputs, type SharedPlannerOutputs } from './plannerModel';
 import {
   calculateAnnualDepreciationFromSchedule,
   calculateDecliningBalanceDepreciation,
@@ -17,6 +16,14 @@ import {
 import { calculateSharedSimpleSummary, type SharedSimpleSummaryResult } from './simpleSummary';
 
 export const DEFAULT_ADVANCED_BENCHMARK_RATE = 0.14;
+
+export type WarningSeverity = 'critical' | 'warning' | 'note';
+
+export interface PlannerWarning {
+  severity: WarningSeverity;
+  code: string;
+  message: string;
+}
 
 export interface AdvancedCalculationResult {
   simpleSummary: SharedSimpleSummaryResult;
@@ -77,7 +84,6 @@ export interface AdvancedCalculationResult {
     mixedShare: number;
     riskMessage: string;
   };
-  sharedPlannerOutputs: SharedPlannerOutputs;
   breakEvenUnits: number;
   weeksToBreakEven: number;
   monthsToBreakEven: number;
@@ -102,7 +108,8 @@ export interface AdvancedCalculationResult {
     lossCases: string[];
     summary: string;
   };
-  warnings: string[];
+  warnings: PlannerWarning[];
+  investedCapital: number;
   timelineData: { week: number; revenue: number; costs: number; netCash: number }[];
 }
 
@@ -172,7 +179,7 @@ export const calculateAdvancedRoadmap = (state: AdvancedFormState): AdvancedCalc
   const monthlyNetProfit = monthlyProfitSnapshot.netProfit;
 
   // 6. Shared Simple Mode summary
-  const totalStartupInvestment = state.equipmentCost + (monthlyFixedOps * 3);
+  const totalStartupInvestment = state.equipmentCost;
   const simpleSummary = calculateSharedSimpleSummary({
     lineItems: [
       {
@@ -275,39 +282,50 @@ export const calculateAdvancedRoadmap = (state: AdvancedFormState): AdvancedCalc
   });
 
   // 9. Warnings
-  const warnings: string[] = [];
-  if (weeksToBreakEven > 104) warnings.push("Break-even is taking longer than 2 years. Consider reducing fixed costs or increasing price.");
-  if (monthlyNetProfit < 0) warnings.push("Your business is operating at a loss. You need to increase sales, raise prices, or cut costs.");
-  if (effectiveContributionMargin < state.sellingPrice * 0.1 && state.sellingPrice > 0) warnings.push("Your margin is very low once operating cost behavior is considered. Any unexpected cost could make you unprofitable.");
-  if (state.sellingPrice < unitBaseCost && state.sellingPrice > 0) warnings.push("You are selling below your variable cost. You lose money on every sale.");
-  if (benchmarkComparison.status === 'weak') warnings.push(benchmarkComparison.message);
-  if (monthlyNetProfit > 0 && monthlyCashPosition < 0) warnings.push(cashBridge.message);
-  if (growthRetention.status === 'shortfall' || growthRetention.status === 'tight') warnings.push(growthRetention.message);
-  if (interestCoverageStatus === 'watch' || interestCoverageStatus === 'risky') warnings.push(interestCoverageMessage);
-  if (fixedShare >= 0.6) warnings.push(costStructureRiskMessage);
+  const warnings: PlannerWarning[] = [];
+  const addWarning = (severity: WarningSeverity, code: string, message: string) => {
+    warnings.push({ severity, code, message });
+  };
 
-  const sharedPlannerOutputs = buildSharedPlannerOutputs(
-    'advanced',
-    {
-      revenue: monthlyRevenue,
-      variable_costs: monthlyVariableCosts,
-      fixed_costs: monthlyFixedOps,
-      profit: monthlyNetProfit,
-      cash_position: monthlyCashPosition,
-      invested_capital: investedCapital,
-      debt_cost: annualInterestCost > 0 ? annualInterestCost : null,
-      benchmark_rate: benchmarkRate,
-      interest_coverage: interestCoverageRatio,
-      roic,
-      reinvestment_need: reinvestmentNeed,
-      owner_distribution: ownerDistributionCapacity,
-    },
-    warnings.map((message) => ({
-      metric: 'profit',
-      severity: 'warning' as const,
-      message,
-    })),
-  );
+  if (monthlyNetProfit < 0) {
+    addWarning('critical', 'monthly_loss', 'Your business is operating at a loss. You need to increase sales, raise prices, or cut costs.');
+  }
+  if (state.sellingPrice < unitBaseCost && state.sellingPrice > 0) {
+    addWarning('critical', 'selling_below_variable_cost', 'You are selling below your variable cost. You lose money on every sale.');
+  }
+  if (effectiveContributionMargin <= 0 && state.sellingPrice > 0) {
+    addWarning('critical', 'no_effective_contribution_margin', 'Your selling price does not cover variable and operating costs per unit. Break-even is not reachable at this setup.');
+  }
+  if (interestCoverageRatio !== null && interestCoverageRatio < 1.5) {
+    addWarning('critical', 'risky_interest_coverage', interestCoverageMessage);
+  }
+  if (monthlyNetProfit > 0 && monthlyCashPosition < 0) {
+    addWarning('critical', 'profit_cash_squeeze', cashBridge.message);
+  }
+  if (weeksToBreakEven > 104) {
+    addWarning('warning', 'long_break_even', 'Break-even is taking longer than 2 years. Consider reducing fixed costs or increasing price.');
+  }
+  if (effectiveContributionMargin > 0 && effectiveContributionMargin < state.sellingPrice * 0.1 && state.sellingPrice > 0) {
+    addWarning('warning', 'thin_effective_margin', 'Your margin is very low once operating cost behavior is considered. Any unexpected cost could make you unprofitable.');
+  }
+  if (benchmarkComparison.status === 'weak') {
+    addWarning('warning', 'weak_benchmark_return', benchmarkComparison.message);
+  }
+  if (growthRetention.status === 'shortfall' || growthRetention.status === 'tight') {
+    addWarning('warning', `growth_${growthRetention.status}`, growthRetention.message);
+  }
+  if (fixedShare >= 0.6) {
+    addWarning('warning', 'high_fixed_cost_share', costStructureRiskMessage);
+  }
+  if (interestCoverageStatus === 'watch') {
+    addWarning('warning', 'watch_interest_coverage', interestCoverageMessage);
+  }
+  if (interestCoverageRatio === null) {
+    addWarning('note', 'no_loan_entered', 'No loan entered, so debt safety does not apply yet.');
+  }
+  addWarning('note', 'simplified_tax', 'Tax is a simplified estimate.');
+  addWarning('note', 'working_capital_not_full', 'Working capital timing is not fully calculated in Advanced Mode.');
+  addWarning('note', 'flat_timeline_projection', 'Timeline projections use the current weekly sales pace and do not model seasonal changes.');
 
   // 10. Timeline Data (52 weeks)
   const timelineData = [];
@@ -368,7 +386,6 @@ export const calculateAdvancedRoadmap = (state: AdvancedFormState): AdvancedCalc
       mixedShare,
       riskMessage: costStructureRiskMessage,
     },
-    sharedPlannerOutputs,
     breakEvenUnits,
     weeksToBreakEven,
     monthsToBreakEven,
@@ -379,6 +396,7 @@ export const calculateAdvancedRoadmap = (state: AdvancedFormState): AdvancedCalc
     scenarios,
     sensitivityMatrix,
     warnings,
+    investedCapital,
     timelineData
   };
 };

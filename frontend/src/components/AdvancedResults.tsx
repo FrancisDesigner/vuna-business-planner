@@ -3,7 +3,7 @@ import { AdvancedCalculationResult } from '../lib/advancedCalculator';
 import { AdvancedFormState } from '../types/advanced';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
-import { Download, AlertCircle, Mail } from 'lucide-react';
+import { Download, AlertCircle, Info, Mail, TriangleAlert } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -49,6 +49,29 @@ export default function AdvancedResults({ results, state, currencyCode }: Props)
         ? 'bg-amber-50 text-amber-900'
         : 'bg-red-50 text-red-700'
   );
+  const warningGroups = [
+    {
+      severity: 'critical',
+      title: 'Critical issues',
+      icon: AlertCircle,
+      className: 'border-red-200 bg-red-50 text-red-800',
+      itemClassName: 'text-red-700',
+    },
+    {
+      severity: 'warning',
+      title: 'Warnings',
+      icon: TriangleAlert,
+      className: 'border-amber-200 bg-amber-50 text-amber-900',
+      itemClassName: 'text-amber-800',
+    },
+    {
+      severity: 'note',
+      title: 'Notes',
+      icon: Info,
+      className: 'border-blue-100 bg-blue-50 text-blue-900',
+      itemClassName: 'text-blue-800',
+    },
+  ] as const;
 
   const handleDownloadPDF = async () => {
     if (!reportRef.current) return;
@@ -145,16 +168,29 @@ export default function AdvancedResults({ results, state, currencyCode }: Props)
 
         {/* Warnings */}
         {results.warnings.length > 0 && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl">
-            <div className="flex items-start">
-              <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 mr-3 shrink-0" />
-              <div>
-                <h3 className="text-sm font-bold text-red-800 uppercase tracking-wider mb-1">Golden Warnings</h3>
-                <ul className="list-disc pl-5 space-y-1 text-sm text-red-700">
-                  {results.warnings.map((w, i) => <li key={i}>{w}</li>)}
-                </ul>
-              </div>
-            </div>
+          <div className="space-y-3">
+            {warningGroups.map((group) => {
+              const groupWarnings = results.warnings.filter((warning) => warning.severity === group.severity);
+              const Icon = group.icon;
+
+              if (groupWarnings.length === 0) {
+                return null;
+              }
+
+              return (
+                <div key={group.severity} className={`rounded-2xl border p-4 ${group.className}`}>
+                  <div className="flex items-start">
+                    <Icon className="mt-0.5 mr-3 h-5 w-5 shrink-0" />
+                    <div>
+                      <h3 className="mb-1 text-sm font-bold uppercase tracking-wider">{group.title}</h3>
+                      <ul className={`list-disc space-y-1 pl-5 text-sm ${group.itemClassName}`}>
+                        {groupWarnings.map((warning) => <li key={warning.code}>{warning.message}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -163,8 +199,9 @@ export default function AdvancedResults({ results, state, currencyCode }: Props)
           <CardHeader><CardTitle className="text-vuna-dark">Business Summary</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-2xl">
-              <p className="text-sm text-vuna-slate">Total Investment</p>
-              <p className="text-xl font-bold text-vuna-dark">{formatCurrency(results.totalStartupInvestment)}</p>
+              <p className="text-sm text-vuna-slate">Capital invested</p>
+              <p className="text-xl font-bold text-vuna-dark">{formatCurrency(results.investedCapital)}</p>
+              <p className="mt-1 text-xs leading-5 text-vuna-slate">Money tied up in equipment or the investment amount you entered.</p>
             </div>
             <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-2xl">
               <p className="text-sm text-vuna-slate">Break-even Point</p>
@@ -282,7 +319,7 @@ export default function AdvancedResults({ results, state, currencyCode }: Props)
                 </div>
                 <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
                   <p className="text-sm text-vuna-slate">Invested capital</p>
-                  <p className="mt-2 text-xl font-bold text-vuna-dark">{formatCurrency(results.sharedPlannerOutputs.metrics.invested_capital ?? 0)}</p>
+                  <p className="mt-2 text-xl font-bold text-vuna-dark">{formatCurrency(results.investedCapital)}</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
