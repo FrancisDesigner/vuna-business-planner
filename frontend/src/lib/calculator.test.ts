@@ -389,7 +389,7 @@ test('G-008 builds a bad-month scenario and growth warning for small-business pl
   assert.match(result.purposeHeadline, /grow/i);
 });
 
-test('G-009 ongoing businesses do not carry startup recovery investment', () => {
+test('G-009 startup line items are not zeroed out in ongoing businesses', () => {
   const state = createBaseState();
   state.step1_entry.businessStatus = 'ongoing';
   state.step1_entry.category = 'retail';
@@ -406,9 +406,40 @@ test('G-009 ongoing businesses do not carry startup recovery investment', () => 
   const result = calculateRoadmap(state, 'retail');
 
   assert.equal(result.businessStatus, 'ongoing');
-  assertClose(result.totalInitialInvestment, 0, 'totalInitialInvestment');
-  assertClose(result.investmentPaybackMonths, 0, 'investmentPaybackMonths');
+  assertClose(result.totalInitialInvestment, 500_000, 'totalInitialInvestment');
+  assertClose(result.investmentPaybackMonths, 0.9090909090909091, 'investmentPaybackMonths');
   assert.equal(result.startupMoneyWarning, null);
+});
+
+test('G-011 service PDF startup recovery includes licenses and opening work cash', () => {
+  const state = createBaseState();
+  state.step1_entry.businessStatus = 'new';
+  state.step1_entry.category = 'service';
+  state.step2_buckets.stockRefillFrequency = 'weekly';
+  state.step2_buckets.seedCosts = [];
+  state.step2_buckets.foundationCosts = [
+    { id: 'license', name: 'Licenses', amount: 100_000, costCategory: 'one-time' },
+  ];
+  state.step2_buckets.fuelCosts = [];
+  state.step2_buckets.protectionCosts = [];
+  state.step2_buckets.items = [
+    {
+      id: 'service-1',
+      name: 'Service',
+      buyingPrice: 1_010,
+      sellingPrice: 9_730.76923076923,
+      unitsPerWeek: 10,
+    },
+  ];
+
+  const result = calculateRoadmap(state, 'service');
+
+  assertClose(result.startupCostsEntered, 100_000, 'startupCostsEntered');
+  assertClose(result.firstStockCost, 10_100, 'firstStockCost');
+  assertClose(result.totalInitialInvestment, 110_100, 'totalInitialInvestment');
+  assertClose(result.monthlyProfit, 377_900, 'monthlyProfit');
+  assertClose(result.investmentPaybackMonths, 0.2913471817941254, 'investmentPaybackMonths');
+  assertClose(result.investmentPaybackMonths * 30, 8.740415453823762, 'startupRecoveryDays');
 });
 
 test('G-010 agriculture mode computes gross margin, cost of production, and break-even season metrics', () => {

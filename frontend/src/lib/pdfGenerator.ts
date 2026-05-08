@@ -525,6 +525,35 @@ function buildMonthlyRunningCostRows(state: WizardState, formatCurrency: (value:
   return rows.length > 0 ? rows : [['No monthly costs entered', formatCurrency(0)]];
 }
 
+function formatStartupRecoveryLabel(totalStartupMoney: number, investmentPaybackMonths: number): string {
+  if (totalStartupMoney <= 0) {
+    return 'No startup money entered';
+  }
+
+  if (!Number.isFinite(investmentPaybackMonths)) {
+    return 'Not recoverable yet';
+  }
+
+  return formatPaybackMonths(investmentPaybackMonths);
+}
+
+function buildStartupRecoveryNarrative(
+  totalStartupMoney: number,
+  monthlyProfit: number,
+  paybackTime: string,
+  formatCurrency: (value: number) => string,
+): string {
+  if (totalStartupMoney <= 0) {
+    return 'No startup money was entered, so there is no startup recovery time to calculate yet.';
+  }
+
+  if (monthlyProfit <= 0) {
+    return 'Not recoverable yet. At the current profit level, the startup money is not yet being recovered. Improve sales, prices, or costs before relying on this business for recovery.';
+  }
+
+  return `At ${formatCurrency(monthlyProfit)} monthly profit, it will take about ${paybackTime} to recover ${formatCurrency(totalStartupMoney)}.`;
+}
+
 function getOfferSectionTitle(businessType: BusinessType): string {
   if (businessType === 'service') {
     return 'Your Services and What They Earn';
@@ -553,7 +582,10 @@ function buildPDFDocument(
   const startupCostRows = buildStartupCostRows(state, businessType, formatCurrency);
   const monthlyRunningCostRows = buildMonthlyRunningCostRows(state, formatCurrency);
   const operatingBreakEvenTime = formatRecoveryTime(results.recoveryDays);
-  const paybackTime = formatPaybackMonths(results.investmentPaybackMonths);
+  const paybackTime = formatStartupRecoveryLabel(results.totalInitialInvestment, results.investmentPaybackMonths);
+  const startupRecoveryTimelineMonths = results.totalInitialInvestment > 0
+    ? results.investmentPaybackMonths
+    : Number.POSITIVE_INFINITY;
   const lineItems = results.lineItemBreakdown.length > 0
     ? results.lineItemBreakdown
     : [{
@@ -613,7 +645,7 @@ function buildPDFDocument(
     },
     {
       label: 'Startup recovery time',
-      value: Number.isFinite(results.investmentPaybackMonths) ? paybackTime : 'Not yet',
+      value: paybackTime,
       helper: '',
     },
   ], y);
@@ -813,12 +845,15 @@ function buildPDFDocument(
   y = getLastTableY(doc, y) + 8;
   y = drawParagraph(
     doc,
-    Number.isFinite(results.investmentPaybackMonths)
-      ? `At ${formatCurrency(results.monthlyProfit)} monthly profit, it will take about ${paybackTime} to recover ${formatCurrency(results.totalInitialInvestment)}.`
-      : 'At the current profit level, the startup money is not yet being recovered. Improve sales, prices, or costs before relying on this business for recovery.',
+    buildStartupRecoveryNarrative(
+      results.totalInitialInvestment,
+      results.monthlyProfit,
+      paybackTime,
+      formatCurrency,
+    ),
     y,
   );
-  y = drawRecoveryTimeline(doc, y, results.investmentPaybackMonths);
+  y = drawRecoveryTimeline(doc, y, startupRecoveryTimelineMonths);
   y = drawCallout(
     doc,
     'Do not withdraw too much during recovery',

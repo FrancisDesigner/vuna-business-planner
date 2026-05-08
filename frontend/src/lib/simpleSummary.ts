@@ -161,7 +161,7 @@ export function calculateSharedSimpleSummary({
     monthlyVariableCosts,
     details: openingStockCycleDetails,
   });
-  const totalStartupMoney = includeStartupInvestment ? startupCostsEntered + firstStockCost : 0;
+  const totalStartupMoney = startupCostsEntered + firstStockCost;
   const monthlyProfit = weeklyCycle.monthlyContribution - totalMonthlyFixedCosts;
   const monthlyRestockCost = monthlyVariableCosts;
   const safetyBufferAmount = monthlyProfit > 0 ? monthlyProfit * 0.2 : 0;
